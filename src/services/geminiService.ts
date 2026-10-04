@@ -136,8 +136,9 @@ Réponds UNIQUEMENT avec le JSON valide, sans commentaire.
     return normalizeExtraction(parsed);
   } catch (error) {
     console.error('Erreur lors de la lecture de la feuille via Gemini:', error);
+    const detail = error instanceof Error ? error.message.slice(0, 300) : String(error);
     throw new Error(
-      "Impossible d'analyser la feuille d'attaques. Vérifiez la qualité de la photo ou votre clé API."
+      `Impossible d'analyser la feuille d'attaques. Vérifiez la photo ou votre clé API. Détail : ${detail}`
     );
   }
 }
