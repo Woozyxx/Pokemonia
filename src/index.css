@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-pokecard-title {
+    font-family: 'Gill Sans', 'Gill Sans MT', 'Montserrat', 'Futura', system-ui, sans-serif;
+    font-weight: 900;
+  }
+  .font-pokecard-body {
+    font-family: 'Gill Sans', 'Gill Sans MT', 'Inter', system-ui, sans-serif;
+    font-weight: 800;
+  }
+
+  /* Holographic foil shine effect */
+  .holo-foil {
+    background: linear-gradient(
+      115deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.45) 25%,
+      rgba(255, 0, 128, 0.35) 40%,
+      rgba(0, 255, 255, 0.35) 60%,
+      rgba(255, 255, 0, 0.45) 75%,
+      transparent 100%
+    );
+    background-size: 200% 200%;
+    animation: holoShimmer 4s ease infinite;
+    mix-blend-mode: overlay;
+  }
+}
+
+@keyframes holoShimmer {
+  0% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@media print {
+  html, body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0mm;
+  }
+
+  .a4-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    overflow: hidden !important;
+    page-break-after: always;
+    box-sizing: border-box !important;
+    background: white !important;
+  }
+
+  .pokemon-card-printable {
+    width: 63mm !important;
+    height: 88mm !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    border-radius: 3.5mm !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+  }
+}
