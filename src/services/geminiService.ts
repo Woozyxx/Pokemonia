@@ -65,7 +65,8 @@ function normalizeExtraction(raw: GeminiExtractionResult): GeminiExtractionResul
   };
 }
 
-const MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+const TEXT_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+const IMAGE_MODELS = ['gemini-2.5-flash-image'];
 const RETRY_DELAYS_MS = [1500, 3500];
 
 const isOverloaded = (error: unknown): boolean => {
@@ -74,9 +75,12 @@ const isOverloaded = (error: unknown): boolean => {
 };
 
 /** Réessaie quand Gemini est surchargé (503/429), puis bascule sur un modèle de secours. */
-async function generateWithRetry<T>(request: (model: string) => Promise<T>): Promise<T> {
+async function generateWithRetry<T>(
+  request: (model: string) => Promise<T>,
+  models: string[] = TEXT_MODELS
+): Promise<T> {
   let lastError: unknown;
-  for (const model of MODELS) {
+  for (const model of models) {
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       try {
         return await request(model);
@@ -178,15 +182,54 @@ Réponds UNIQUEMENT avec le JSON valide, sans commentaire.
   }
 }
 
+export const DEFAULT_STYLIZE_PROMPT = `En te basant sur ce dessin d'enfant, reproduis fidèlement les traits, la forme générale, les proportions et les éléments distinctifs du Pokémon imaginé. Applique un style artistique Pokémon hautement détaillé et stylisé, rappelant les illustrations de cartes officielles, mais en conservant l'esprit et l'originalité du dessin initial. Apporte de légères améliorations visuelles en termes de netteté, de couleurs vives et contrastées, avec des effets de lumière et d'ombre dynamiques pour lui donner un aspect professionnel. Le Pokémon est représenté en pleine action ou dans une pose emblématique, occupant le centre de l'image. Le fond est un dégradé de couleurs harmonieux et stylisé, avec des formes abstraites ou des motifs discrets qui évoquent le type ou l'environnement du Pokémon (par exemple, des volutes de feu pour un Pokémon de feu, des bulles et vagues pour un Pokémon d'eau, des motifs de feuilles pour un Pokémon de plante). Ce fond doit être entièrement rempli de couleurs et de motifs stylisés, sans laisser de grandes zones blanches, et doit rester simple et non distrayant. L'image doit se concentrer uniquement sur le Pokémon et son fond stylisé, sans aucun texte, symbole ou cadre de carte. Le rendu final doit être une illustration complète, de haute résolution, avec un ratio d'aspect standard 16:9, et ne doit absolument pas être une image rognée, miniature ou intégrée dans un cadre de carte Pokémon. Elle doit être prête à être éditée et placée manuellement dans un cadre de carte Pokémon séparé.`;
+
 /**
- * Returns the exact original drawing image cleanly without adding artificial background shapes or artifacts
+ * Redessine le dessin de l'enfant dans un style Pokémon officiel via un modèle d'image Gemini.
+ * Lance une erreur si aucune image n'est renvoyée (l'appelant garde alors le dessin d'origine).
  */
 export async function stylizeDrawingImage(
   drawingBase64Url: string,
-  _pokemonName: string = 'Mon Pokémon',
-  _pokemonType: PokemonType = 'fire',
-  _customApiKey?: string
+  pokemonName: string = 'Mon Pokémon',
+  pokemonType: PokemonType = 'fire',
+  customApiKey?: string,
+  customPrompt: string = DEFAULT_STYLIZE_PROMPT
 ): Promise<string> {
-  // Pure drawing image without any synthetic canvas background effects
-  return drawingBase64Url;
+  const apiKey = getApiKey(customApiKey);
+  if (!apiKey) {
+    throw new Error("Clé API Gemini manquante. Veuillez configurer votre clé dans l'application.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const imageInfo = parseDataUrl(drawingBase64Url);
+  const prompt = `${customPrompt}
+
+Indications : ce Pokémon s'appelle « ${pokemonName} » et il est de type ${pokemonType}.`;
+
+  try {
+    const response = await generateWithRetry(
+      (model) =>
+        ai.models.generateContent({
+          model,
+          contents: [{ inlineData: { mimeType: imageInfo.mimeType, data: imageInfo.data } }, prompt],
+          config: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '16:9' } },
+        }),
+      IMAGE_MODELS
+    );
+
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = parts.find((part) => part.inlineData?.data);
+    if (!imagePart?.inlineData?.data) {
+      throw new Error("Gemini n'a renvoyé aucune image.");
+    }
+    const mime = imagePart.inlineData.mimeType || 'image/png';
+    return `data:${mime};base64,${imagePart.inlineData.data}`;
+  } catch (error) {
+    console.error("Erreur lors de la génération du visuel via Gemini:", error);
+    if (isOverloaded(error)) {
+      throw new Error("Gemini est surchargé en ce moment. Réessaie dans une minute.");
+    }
+    const detail = error instanceof Error ? error.message.slice(0, 300) : String(error);
+    throw new Error(`Impossible de générer le visuel Pokémon. Détail : ${detail}`);
+  }
 }

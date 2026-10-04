@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { PokemonCardData, GeminiExtractionResult } from './types';
+import type { PokemonCardData, GeminiExtractionResult, PokemonType } from './types';
 import { Header } from './components/Header';
 import { PhotoUploader } from './components/PhotoUploader';
 import { CardEditor } from './components/CardEditor';
@@ -9,7 +9,7 @@ import { SavedCardsModal } from './components/SavedCardsModal';
 import { PokeCardMakerEmbed } from './components/PokeCardMakerEmbed';
 import { PhoneImporter, PhoneSender } from './components/PhoneImporter';
 import type { PhoneKind } from './components/PhoneImporter';
-import { extractStatsFromSheet, getApiKey } from './services/geminiService';
+import { extractStatsFromSheet, stylizeDrawingImage, getApiKey } from './services/geminiService';
 import confetti from 'canvas-confetti';
 import { Eye, Edit3, Printer, Globe } from 'lucide-react';
 
@@ -130,6 +130,26 @@ function PcApp() {
         }
       }
 
+      let artworkUrl = drawingUrl || cardData.artworkUrl;
+      if (drawingUrl) {
+        setProcessingMessage('Création du visuel Pokémon par Gemini (cela peut prendre une minute)...');
+        try {
+          artworkUrl = await stylizeDrawingImage(
+            drawingUrl,
+            ext.name || cardData.name,
+            (ext.type || cardData.type) as PokemonType,
+            apiKey
+          );
+        } catch (styleErr) {
+          console.warn('Génération du visuel échouée, le dessin original est conservé.', styleErr);
+          setErrorMessage((prev) =>
+            [prev, styleErr instanceof Error ? styleErr.message : 'La génération du visuel a échoué.']
+              .filter(Boolean)
+              .join(' — ')
+          );
+        }
+      }
+
       const updatedCard: PokemonCardData = {
         ...cardData,
         // Relancer sur une carte déjà créée la met à jour au lieu d'en créer une nouvelle.
@@ -138,7 +158,7 @@ function PcApp() {
         hp: ext.hp || cardData.hp,
         type: ext.type || cardData.type,
         stage: ext.stage || cardData.stage,
-        artworkUrl: drawingUrl || cardData.artworkUrl,
+        artworkUrl,
         originalDrawingUrl: drawingUrl || cardData.originalDrawingUrl,
         statsSheetUrl: statsSheetUrl || cardData.statsSheetUrl,
         attack1: ext.attack1
