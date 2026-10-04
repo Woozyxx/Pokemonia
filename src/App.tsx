@@ -7,6 +7,8 @@ import { PokemonCard } from './components/PokemonCard';
 import { PrintStudio } from './components/PrintStudio';
 import { SavedCardsModal } from './components/SavedCardsModal';
 import { PokeCardMakerEmbed } from './components/PokeCardMakerEmbed';
+import { PhoneImporter, PhoneSender } from './components/PhoneImporter';
+import type { PhoneKind } from './components/PhoneImporter';
 import { extractStatsFromSheet, getApiKey } from './services/geminiService';
 import confetti from 'canvas-confetti';
 import { Eye, Edit3, Printer, Globe } from 'lucide-react';
@@ -46,7 +48,7 @@ const initialDefaultCard: PokemonCardData = {
   createdAt: Date.now(),
 };
 
-export default function App() {
+function PcApp() {
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('pokecard_gemini_key') || getApiKey();
   });
@@ -74,6 +76,15 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('pokecard_saved_cards', JSON.stringify(savedCards));
   }, [savedCards]);
+
+  const handlePhonePhoto = (kind: PhoneKind, url: string) => {
+    if (kind === 'drawing') {
+      setDrawingUrl(url);
+      setCardData((prev) => (prev.artworkUrl ? prev : { ...prev, artworkUrl: url }));
+    } else {
+      setStatsSheetUrl(url);
+    }
+  };
 
   const handleSaveApiKey = (key: string) => {
     setApiKey(key);
@@ -178,6 +189,8 @@ export default function App() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <PhoneImporter onPhoto={handlePhonePhoto} />
+
         <PhotoUploader
           drawingUrl={drawingUrl}
           statsSheetUrl={statsSheetUrl}
@@ -305,4 +318,11 @@ export default function App() {
       />
     </div>
   );
+}
+
+export default function App() {
+  // Page ouverte depuis le QR code : mode « envoi de photos » minimal pour le téléphone.
+  const phonePeerId = new URLSearchParams(window.location.search).get('phone');
+  if (phonePeerId) return <PhoneSender peerId={phonePeerId} />;
+  return <PcApp />;
 }
