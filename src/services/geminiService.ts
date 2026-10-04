@@ -65,6 +65,33 @@ function normalizeExtraction(raw: GeminiExtractionResult): GeminiExtractionResul
   };
 }
 
+const MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+const RETRY_DELAYS_MS = [1500, 3500];
+
+const isOverloaded = (error: unknown): boolean => {
+  const text = error instanceof Error ? error.message : String(error);
+  return /(429|500|503)|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand/i.test(text);
+};
+
+/** Réessaie quand Gemini est surchargé (503/429), puis bascule sur un modèle de secours. */
+async function generateWithRetry<T>(request: (model: string) => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        return await request(model);
+      } catch (error) {
+        lastError = error;
+        if (!isOverloaded(error)) throw error;
+        if (attempt < RETRY_DELAYS_MS.length) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+        }
+      }
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Extract stats from handwritten sheet using gemini-3.6-flash
  */
@@ -111,9 +138,9 @@ Extrais les informations sous la forme d'un objet JSON strict avec les champs su
 Réponds UNIQUEMENT avec le JSON valide, sans commentaire.
 `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+  const request = (model: string) =>
+    ai.models.generateContent({
+      model,
       contents: [
         {
           inlineData: {
@@ -126,6 +153,9 @@ Réponds UNIQUEMENT avec le JSON valide, sans commentaire.
       config: { responseMimeType: 'application/json' },
     });
 
+  try {
+    const response = await generateWithRetry(request);
+
     const responseText = response.text || '';
     const cleanedJson = responseText
       .replace(/```json/gi, '')
@@ -136,6 +166,11 @@ Réponds UNIQUEMENT avec le JSON valide, sans commentaire.
     return normalizeExtraction(parsed);
   } catch (error) {
     console.error('Erreur lors de la lecture de la feuille via Gemini:', error);
+    if (isOverloaded(error)) {
+      throw new Error(
+        "Gemini est surchargé en ce moment (plusieurs essais effectués). Réessaie dans une minute en cliquant à nouveau sur « Générer »."
+      );
+    }
     const detail = error instanceof Error ? error.message.slice(0, 300) : String(error);
     throw new Error(
       `Impossible d'analyser la feuille d'attaques. Vérifiez la photo ou votre clé API. Détail : ${detail}`
